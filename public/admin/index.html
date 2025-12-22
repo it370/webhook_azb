@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aizawl Bazaar Admin</title>
+    <style>
+      :root {
+        font-family: Arial, sans-serif;
+        background: #f7f7f8;
+        color: #222;
+      }
+      body {
+        margin: 0;
+        padding: 1.5rem;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 1rem;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #e3e3e3;
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+      .card h2 {
+        margin-top: 0;
+        margin-bottom: 0.75rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-weight: 600;
+      }
+      textarea,
+      input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #d0d0d0;
+        border-radius: 6px;
+      }
+      button {
+        margin-top: 0.5rem;
+        padding: 0.6rem 1rem;
+        border: none;
+        border-radius: 6px;
+        background: #2563eb;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        background: #9ab6f7;
+        cursor: not-allowed;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+      }
+      th,
+      td {
+        border: 1px solid #e5e5e5;
+        padding: 0.5rem;
+        vertical-align: top;
+      }
+      th {
+        background: #f0f4ff;
+        text-align: left;
+      }
+      code {
+        background: #f3f3f3;
+        padding: 0.1rem 0.2rem;
+        border-radius: 4px;
+      }
+      .muted {
+        color: #555;
+        font-size: 0.9rem;
+      }
+      .pill {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #3730a3;
+        font-weight: 600;
+        font-size: 0.85rem;
+      }
+      .row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #22c55e;
+        display: inline-block;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f6f8fa;
+        padding: 0.75rem;
+        border-radius: 6px;
+        border: 1px solid #e5e5e5;
+        max-height: 220px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Aizawl Bazaar Admin</h1>
+    <p class="muted">
+      Run test messages, monitor webhook events, and view pending orders without leaving this page.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Quick Test</h2>
+        <form id="test-form">
+          <label for="test-text">Message text</label>
+          <textarea id="test-text" rows="4" placeholder="e.g., I want a chocolate cake"></textarea>
+          <button id="test-button" type="submit">Send to bot</button>
+        </form>
+        <div id="test-result" class="muted" style="margin-top: 0.75rem;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Pending Orders</h2>
+        <div class="row" style="margin-bottom: 0.5rem;">
+          <button id="refresh-orders" type="button">Refresh</button>
+        </div>
+        <div id="orders-body" class="muted">Loading...</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 1rem;">
+      <div class="row" style="justify-content: space-between;">
+        <h2 style="margin: 0;">Recent Webhook Events</h2>
+        <div class="row">
+          <button id="refresh-events" type="button">Refresh</button>
+        </div>
+      </div>
+      <div id="events-table" style="margin-top: 0.5rem;" class="muted">
+        Loading...
+      </div>
+    </div>
+
+    <script>
+      const testForm = document.getElementById("test-form");
+      const testText = document.getElementById("test-text");
+      const testResult = document.getElementById("test-result");
+      const testButton = document.getElementById("test-button");
+      const eventsTable = document.getElementById("events-table");
+      const refreshEventsBtn = document.getElementById("refresh-events");
+      const ordersBody = document.getElementById("orders-body");
+      const refreshOrdersBtn = document.getElementById("refresh-orders");
+
+      async function runTest(e) {
+        e.preventDefault();
+        const text = testText.value.trim();
+        if (!text) {
+          testResult.textContent = "Enter a message first.";
+          return;
+        }
+        setLoading(testButton, true);
+        testResult.textContent = "Running...";
+        try {
+          const res = await fetch("/admin/api/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || "Test failed");
+          }
+          const products = data.products || [];
+          const productLines = products
+            .map((p) => `- ${p.name} (${p.vendor_name || p.vendor?.name || "Unknown"})`)
+            .join("\\n");
+          testResult.innerHTML = `
+            <div><span class="pill">Reply</span> ${escapeHtml(data.reply || "")}</div>
+            ${
+              products.length
+                ? `<div style="margin-top:0.4rem;"><span class="pill">Products</span><pre>${escapeHtml(productLines)}</pre></div>`
+                : ""
+            }
+          `;
+          await Promise.all([loadEvents(), loadOrders()]);
+        } catch (err) {
+          testResult.textContent = err.message;
+        } finally {
+          setLoading(testButton, false);
+        }
+      }
+
+      function renderEvents(events = []) {
+        if (!events.length) {
+          eventsTable.textContent = "No events yet.";
+          return;
+        }
+        const rows = events
+          .map(
+            (e) => `
+            <tr>
+              <td>${escapeHtml(e.createdAt || "")}</td>
+              <td>${escapeHtml(e.source || "webhook")}</td>
+              <td><code>${escapeHtml(e.incomingText || "")}</code></td>
+              <td>${escapeHtml(e.reply || e.error || "")}</td>
+              <td>${Array.isArray(e.products) ? e.products.length : 0}</td>
+            </tr>
+          `
+          )
+          .join("");
+        eventsTable.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Source</th>
+                <th>Incoming</th>
+                <th>Reply / Error</th>
+                <th># Products</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
+      function renderOrders(orders = []) {
+        if (!orders.length) {
+          ordersBody.textContent = "No pending orders logged.";
+          return;
+        }
+        const rows = orders
+          .map(
+            (o) => `
+              <div style="margin-bottom:0.5rem;">
+                <div><span class="pill">Order</span> ${escapeHtml(o.id || "")}</div>
+                <div class="muted">${escapeHtml(o.requestedProduct || "")}</div>
+                <div class="muted">${escapeHtml(o.status || "")} • ${escapeHtml(
+              o.createdAt || ""
+            )}</div>
+              </div>
+            `
+          )
+          .join("");
+        ordersBody.innerHTML = rows;
+      }
+
+      async function loadEvents() {
+        eventsTable.textContent = "Loading...";
+        try {
+          const res = await fetch("/admin/api/events");
+          const data = await res.json();
+          renderEvents(data.events || []);
+        } catch (err) {
+          eventsTable.textContent = "Failed to load events.";
+        }
+      }
+
+      async function loadOrders() {
+        ordersBody.textContent = "Loading...";
+        try {
+          const res = await fetch("/admin/api/orders");
+          const data = await res.json();
+          renderOrders(data.orders || []);
+        } catch (err) {
+          ordersBody.textContent = "Failed to load orders.";
+        }
+      }
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function setLoading(button, state) {
+        button.disabled = state;
+        if (state) {
+          button.dataset.prev = button.textContent;
+          button.textContent = "Working...";
+        } else {
+          button.textContent = button.dataset.prev || "Send";
+        }
+      }
+
+      testForm.addEventListener("submit", runTest);
+      refreshEventsBtn.addEventListener("click", loadEvents);
+      refreshOrdersBtn.addEventListener("click", loadOrders);
+
+      loadEvents();
+      loadOrders();
+    </script>
+  </body>
+</html>
+
