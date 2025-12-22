@@ -146,6 +146,17 @@
         </div>
         <div id="orders-body" class="muted">Loading...</div>
       </div>
+
+      <div class="card">
+        <h2>Products (up to 100)</h2>
+        <div class="row" style="margin-bottom: 0.5rem;">
+          <button id="load-products" type="button">Load products</button>
+        </div>
+        <div class="muted" style="margin-bottom:0.5rem;">
+          Requires Supabase service role credentials. Shows id, name, price, stock, vendor, location.
+        </div>
+        <div id="products-body" class="muted">Not loaded.</div>
+      </div>
     </div>
 
     <div class="card" style="margin-top: 1rem;">
@@ -169,6 +180,8 @@
       const refreshEventsBtn = document.getElementById("refresh-events");
       const ordersBody = document.getElementById("orders-body");
       const refreshOrdersBtn = document.getElementById("refresh-orders");
+      const loadProductsBtn = document.getElementById("load-products");
+      const productsBody = document.getElementById("products-body");
 
       async function runTest(e) {
         e.preventDefault();
@@ -286,6 +299,61 @@
         }
       }
 
+      async function loadProducts() {
+        productsBody.textContent = "Loading...";
+        setLoading(loadProductsBtn, true, "Loading...");
+        try {
+          const res = await fetch("/admin/api/products?limit=100");
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Failed to load products.");
+          renderProducts(data.products || []);
+        } catch (err) {
+          productsBody.textContent = err.message;
+        } finally {
+          setLoading(loadProductsBtn, false);
+        }
+      }
+
+      function renderProducts(products = []) {
+        if (!products.length) {
+          productsBody.textContent = "No products found (check Supabase creds).";
+          return;
+        }
+        const rows = products
+          .map((p) => {
+            const vendor = p.vendor?.name || "Unknown";
+            const loc = p.vendor?.veng_location || "";
+            const price = p.price != null ? `₹${p.price}` : "N/A";
+            const stock = p.stock_status === false ? "out" : "in";
+            return `
+              <tr>
+                <td>${escapeHtml(p.id || "")}</td>
+                <td>${escapeHtml(p.name || "")}</td>
+                <td>${escapeHtml(price)}</td>
+                <td>${escapeHtml(stock)}</td>
+                <td>${escapeHtml(vendor)}</td>
+                <td>${escapeHtml(loc)}</td>
+              </tr>
+            `;
+          })
+          .join("");
+        productsBody.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Price</th>
+                <th>Stock</th>
+                <th>Vendor</th>
+                <th>Location</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
       function escapeHtml(value) {
         return String(value || "")
           .replace(/&/g, "&amp;")
@@ -295,11 +363,11 @@
           .replace(/'/g, "&#039;");
       }
 
-      function setLoading(button, state) {
+      function setLoading(button, state, label = "Working...") {
         button.disabled = state;
         if (state) {
           button.dataset.prev = button.textContent;
-          button.textContent = "Working...";
+          button.textContent = label;
         } else {
           button.textContent = button.dataset.prev || "Send";
         }
@@ -308,6 +376,7 @@
       testForm.addEventListener("submit", runTest);
       refreshEventsBtn.addEventListener("click", loadEvents);
       refreshOrdersBtn.addEventListener("click", loadOrders);
+      loadProductsBtn.addEventListener("click", loadProducts);
 
       loadEvents();
       loadOrders();

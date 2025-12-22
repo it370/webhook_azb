@@ -3,6 +3,7 @@ const express = require("express");
 const { handleIncomingText } = require("../services/webhookHandler");
 const { getWebhookEvents, recordWebhookEvent } = require("../services/adminStore");
 const { pendingOrders } = require("../services/orderService");
+const { listProducts } = require("../services/productService");
 
 const router = express.Router();
 
@@ -43,6 +44,21 @@ router.post("/api/test", async (req, res) => {
     return res
       .status(500)
       .json({ error: "Test run failed. Check server logs for details." });
+  }
+});
+
+router.get("/api/products", async (req, res) => {
+  try {
+    const limit = Number.parseInt(req.query.limit, 10) || 100;
+    const { products, error } = await listProducts({ limit });
+
+    if (error) {
+      return res.status(500).json({ error });
+    }
+
+    return res.json({ products });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "Failed to load products" });
   }
 });
 

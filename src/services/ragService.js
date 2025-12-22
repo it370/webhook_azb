@@ -1,18 +1,7 @@
-const { createClient } = require("@supabase/supabase-js");
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-let supabase = null;
-if (supabaseUrl && supabaseKey) {
-  supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false },
-  });
-} else {
-  console.warn("Supabase credentials missing. Product search will be empty.");
-}
+const { getSupabaseClient } = require("./supabaseClient");
 
 async function findProductsBySimilarity(embedding, options = {}) {
+  const supabase = getSupabaseClient();
   if (!supabase) return [];
 
   const matchCount = options.matchCount || 5;
