@@ -30,11 +30,22 @@ async function handleIncomingText(incomingText) {
   }
 
   const query = parsed.query || incomingText;
-  const embedding = await embedText(query);
+
+  let embedding = null;
+  try {
+    embedding = await embedText(query);
+  } catch (err) {
+    console.warn("Embedding unavailable, falling back to text search", err.message);
+  }
+
   const products = await findProductsBySimilarity(embedding, {
     matchCount: 5,
     similarityThreshold: 0.5,
+    queryText: query,
   });
+
+  console.log('similar products', products);
+  console.log('query', query);
 
   const formattedList = formatProductList(products);
   const reply = await craftResponse(incomingText, formattedList, products);
@@ -43,12 +54,12 @@ async function handleIncomingText(incomingText) {
 }
 
 async function craftResponse(userText, formattedList, products = []) {
-  if (!formattedList) {
-    return "I can help with shopping info in Aizawl. What are you looking for?";
+  if (!products.length) {
+    return "I couldn't find a close match yet. Try a specific item or brand (e.g., \"Lays chips\"), or ask for a different product.";
   }
 
-  if (!products.length) {
-    return "I couldn't find a close match right now. Tell me more about the item or a different brand.";
+  if (!formattedList) {
+    return "I can help with shopping info in Aizawl. What are you looking for?";
   }
 
   const systemMessage =

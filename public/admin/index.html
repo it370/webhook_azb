@@ -12,12 +12,48 @@
       }
       body {
         margin: 0;
-        padding: 1.5rem;
       }
       h1 {
-        margin-top: 0;
+        margin: 0 0 0.25rem 0;
       }
-      .grid {
+      .layout {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: 100vh;
+      }
+      .sidebar {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      .sidebar h2 {
+        margin: 0;
+        font-size: 1.1rem;
+      }
+      .sidebar .nav button {
+        width: 100%;
+        text-align: left;
+        background: #1e293b;
+        border: 1px solid #243049;
+        color: #e2e8f0;
+        padding: 0.65rem 0.8rem;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .sidebar .nav button:hover {
+        background: #23314d;
+      }
+      .main {
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow-y: auto;
+      }
+      .section-row {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
         gap: 1rem;
@@ -25,7 +61,7 @@
       .card {
         background: #fff;
         border: 1px solid #e3e3e3;
-        border-radius: 8px;
+        border-radius: 10px;
         padding: 1rem;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
       }
@@ -98,18 +134,6 @@
         align-items: center;
         flex-wrap: wrap;
       }
-      .status {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-      }
-      .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
-        background: #22c55e;
-        display: inline-block;
-      }
       pre {
         white-space: pre-wrap;
         word-break: break-word;
@@ -120,55 +144,87 @@
         max-height: 220px;
         overflow: auto;
       }
+      @media (max-width: 800px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          flex-direction: row;
+          gap: 0.75rem;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .sidebar .nav {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+        .sidebar .nav button {
+          width: auto;
+        }
+      }
     </style>
   </head>
   <body>
-    <h1>Aizawl Bazaar Admin</h1>
-    <p class="muted">
-      Run test messages, monitor webhook events, and view pending orders without leaving this page.
-    </p>
-
-    <div class="grid">
-      <div class="card">
-        <h2>Quick Test</h2>
-        <form id="test-form">
-          <label for="test-text">Message text</label>
-          <textarea id="test-text" rows="4" placeholder="e.g., I want a chocolate cake"></textarea>
-          <button id="test-button" type="submit">Send to bot</button>
-        </form>
-        <div id="test-result" class="muted" style="margin-top: 0.75rem;"></div>
-      </div>
-
-      <div class="card">
-        <h2>Pending Orders</h2>
-        <div class="row" style="margin-bottom: 0.5rem;">
-          <button id="refresh-orders" type="button">Refresh</button>
+    <div class="layout">
+      <aside class="sidebar">
+        <div>
+          <h1 style="font-size:1.3rem;">Aizawl Bazaar Admin</h1>
+          <div class="muted">Test, monitor, and inspect data.</div>
         </div>
-        <div id="orders-body" class="muted">Loading...</div>
-      </div>
+        <div class="nav">
+          <button class="nav-btn" data-target="test-card" type="button">Quick test</button>
+          <button class="nav-btn" data-target="orders-card" type="button">Orders</button>
+          <button class="nav-btn" data-target="products-card" type="button">Products</button>
+          <button class="nav-btn" data-target="events-card" type="button">Webhook events</button>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="section-row">
+          <div class="card" id="test-card">
+            <h2>Quick Test</h2>
+            <form id="test-form">
+              <label for="test-text">Message text</label>
+              <textarea id="test-text" rows="4" placeholder="e.g., I want a chocolate cake"></textarea>
+              <button id="test-button" type="submit">Send to bot</button>
+            </form>
+            <div id="test-result" class="muted" style="margin-top: 0.75rem;"></div>
+          </div>
 
-      <div class="card">
-        <h2>Products (up to 100)</h2>
-        <div class="row" style="margin-bottom: 0.5rem;">
-          <button id="load-products" type="button">Load products</button>
+          <div class="card" id="orders-card">
+            <h2>Pending Orders</h2>
+            <div class="row" style="margin-bottom: 0.5rem;">
+              <button id="refresh-orders" type="button">Refresh</button>
+            </div>
+            <div id="orders-body" class="muted">Loading...</div>
+          </div>
         </div>
-        <div class="muted" style="margin-bottom:0.5rem;">
-          Requires Supabase service role credentials. Shows id, name, price, stock, vendor, location.
-        </div>
-        <div id="products-body" class="muted">Not loaded.</div>
-      </div>
-    </div>
 
-    <div class="card" style="margin-top: 1rem;">
-      <div class="row" style="justify-content: space-between;">
-        <h2 style="margin: 0;">Recent Webhook Events</h2>
-        <div class="row">
-          <button id="refresh-events" type="button">Refresh</button>
+        <div class="section-row">
+          <div class="card" id="products-card">
+            <h2>Products (up to 100)</h2>
+            <div class="row" style="margin-bottom: 0.5rem;">
+              <button id="load-products" type="button">Load products</button>
+            </div>
+            <div class="muted" style="margin-bottom:0.5rem;">
+              Requires Supabase service role credentials. Shows id, name, price, stock, vendor, location.
+            </div>
+            <div id="products-body" class="muted">Not loaded.</div>
+          </div>
         </div>
-      </div>
-      <div id="events-table" style="margin-top: 0.5rem;" class="muted">
-        Loading...
-      </div>
+
+        <div class="card" id="events-card">
+          <div class="row" style="justify-content: space-between;">
+            <h2 style="margin: 0;">Recent Webhook Events</h2>
+            <div class="row">
+              <button id="refresh-events" type="button">Refresh</button>
+            </div>
+          </div>
+          <div id="events-table" style="margin-top: 0.5rem;" class="muted">
+            Loading...
+          </div>
+        </div>
+      </main>
     </div>
 
     <script>
@@ -182,6 +238,7 @@
       const refreshOrdersBtn = document.getElementById("refresh-orders");
       const loadProductsBtn = document.getElementById("load-products");
       const productsBody = document.getElementById("products-body");
+      const navButtons = Array.from(document.querySelectorAll(".nav-btn"));
 
       async function runTest(e) {
         e.preventDefault();
@@ -372,6 +429,18 @@
           button.textContent = button.dataset.prev || "Send";
         }
       }
+
+      function scrollToSection(id) {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      navButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const target = btn.dataset.target;
+          if (target) scrollToSection(target);
+        });
+      });
 
       testForm.addEventListener("submit", runTest);
       refreshEventsBtn.addEventListener("click", loadEvents);
