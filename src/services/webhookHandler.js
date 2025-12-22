@@ -3,6 +3,7 @@ const { embedText, runChatCompletion } = require("./openaiClient");
 const { findProductsBySimilarity } = require("./ragService");
 const { formatProductList } = require("../utils/formatters");
 const { logPendingOrder } = require("./orderService");
+const { expandQueryToCategories } = require("./queryExpander");
 
 async function handleIncomingText(incomingText) {
   if (!incomingText) {
@@ -30,10 +31,12 @@ async function handleIncomingText(incomingText) {
   }
 
   const query = parsed.query || incomingText;
+  const expansion = await expandQueryToCategories(query);
+  const searchText = buildSearchText(query, expansion);
 
   let embedding = null;
   try {
-    embedding = await embedText(query);
+    embedding = await embedText(searchText);
   } catch (err) {
     console.warn("Embedding unavailable, falling back to text search", err.message);
   }
@@ -41,20 +44,30 @@ async function handleIncomingText(incomingText) {
   const products = await findProductsBySimilarity(embedding, {
     matchCount: 5,
     similarityThreshold: 0.5,
-    queryText: query,
+    queryText: searchText,
   });
 
-  console.log('similar products', products);
-  console.log('query', query);
-
   const formattedList = formatProductList(products);
-  const reply = await craftResponse(incomingText, formattedList, products);
+  const reply = await craftResponse(incomingText, formattedList, products, expansion);
 
-  return { reply, products, parsed };
+  return { reply, products, parsed, expansion };
 }
 
-async function craftResponse(userText, formattedList, products = []) {
+function buildSearchText(query, expansion) {
+  const parts = [query, ...(expansion.keywords || []), ...(expansion.categories || [])];
+  return parts.filter(Boolean).join(" ");
+}
+
+async function craftResponse(userText, formattedList, products = [], expansion = {}) {
   if (!products.length) {
+    if (expansion.specificity === "generic") {
+      const cats = (expansion.categories || []).slice(0, 5);
+      if (cats.length) {
+        return `I can show popular options from these categories: ${cats.join(
+          ", "
+        )}. Tell me which one (or a brand) and I'll list the top 5.`;
+      }
+    }
     return "I couldn't find a close match yet. Try a specific item or brand (e.g., \"Lays chips\"), or ask for a different product.";
   }
 

@@ -1,6 +1,7 @@
 const express = require("express");
 const { handleIncomingText } = require("../services/webhookHandler");
 const { recordWebhookEvent } = require("../services/adminStore");
+const { sendWhatsAppText } = require("../services/metaClient");
 
 const router = express.Router();
 
@@ -22,8 +23,9 @@ router.get("/webhook", (req, res) => {
 });
 
 router.post("/webhook", async (req, res) => {
-  console.log("Webhook payload:\n", JSON.stringify(req.body, null, 2));
+  // console.log("Webhook payload:\n", JSON.stringify(req.body, null, 2));
   const { text: incomingText, from: sender } = extractWhatsAppFields(req.body);
+  console.log('---incoming text', incomingText);
 
   if (incomingText || sender) {
     console.log(`Inbound WhatsApp -> from: ${sender || "unknown"}, text: "${incomingText || ""}"`);
@@ -54,6 +56,13 @@ router.post("/webhook", async (req, res) => {
       products: result.products,
       parsed: result.parsed,
     });
+    if (sender) {
+      try {
+        await sendWhatsAppText(sender, result.reply);
+      } catch (sendErr) {
+        console.error("Failed to send WhatsApp reply", sendErr);
+      }
+    }
     return res.status(200).json({ reply: result.reply, products: result.products });
   } catch (error) {
     console.error("Webhook processing failed", error);
