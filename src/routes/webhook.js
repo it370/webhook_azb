@@ -22,11 +22,14 @@ router.get("/webhook", (req, res) => {
 });
 
 router.post("/webhook", async (req, res) => {
-  console.log("webhook message received", req.body);
+  console.log("Webhook payload:\n", JSON.stringify(req.body, null, 2));
   const { text: incomingText, from: sender } = extractWhatsAppFields(req.body);
 
+  if (incomingText || sender) {
+    console.log(`Inbound WhatsApp -> from: ${sender || "unknown"}, text: "${incomingText || ""}"`);
+  }
+
   if (!incomingText) {
-    console.log("----no incoming text---");
     const reply =
       "Hi! I can help you find products available in Aizawl. Tell me what you need.";
     recordWebhookEvent({
