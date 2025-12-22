@@ -22,14 +22,17 @@ router.get("/webhook", (req, res) => {
 });
 
 router.post("/webhook", async (req, res) => {
-  const incomingText = extractWhatsAppText(req.body);
+  console.log("webhook message received", req.body);
+  const { text: incomingText, from: sender } = extractWhatsAppFields(req.body);
 
   if (!incomingText) {
+    console.log("----no incoming text---");
     const reply =
       "Hi! I can help you find products available in Aizawl. Tell me what you need.";
     recordWebhookEvent({
       source: "webhook",
       incomingText,
+      from: sender,
       reply,
       products: [],
       parsed: { intent: "search", query: "" },
@@ -38,10 +41,12 @@ router.post("/webhook", async (req, res) => {
   }
 
   try {
+    console.log("----processing incoming text---");
     const result = await handleIncomingText(incomingText);
     recordWebhookEvent({
       source: "webhook",
       incomingText,
+      from: sender,
       reply: result.reply,
       products: result.products,
       parsed: result.parsed,
@@ -52,6 +57,7 @@ router.post("/webhook", async (req, res) => {
     recordWebhookEvent({
       source: "webhook",
       incomingText,
+      from: sender,
       error: error.message,
       reply:
         "Sorry, I ran into a snag. Please try again with the product you want in Aizawl.",
@@ -64,14 +70,15 @@ router.post("/webhook", async (req, res) => {
   }
 });
 
-function extractWhatsAppText(body) {
-  // Meta Cloud API structure: entry[0].changes[0].value.messages[0].text.body
-  const message =
-    body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body ||
-    body?.message?.text ||
-    body?.text ||
-    "";
-  return typeof message === "string" ? message.trim() : "";
+function extractWhatsAppFields(body) {
+  const msg = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  const text =
+    msg?.text?.body || body?.message?.text || body?.text || "";
+  const from = msg?.from || body?.from || "";
+  return {
+    text: typeof text === "string" ? text.trim() : "",
+    from: typeof from === "string" ? from.trim() : "",
+  };
 }
 
 module.exports = router;

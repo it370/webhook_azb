@@ -4,6 +4,7 @@ const { handleIncomingText } = require("../services/webhookHandler");
 const { getWebhookEvents, recordWebhookEvent } = require("../services/adminStore");
 const { pendingOrders } = require("../services/orderService");
 const { listProducts } = require("../services/productService");
+const { sendWhatsAppText } = require("../services/metaClient");
 
 const router = express.Router();
 
@@ -59,6 +60,28 @@ router.get("/api/products", async (req, res) => {
     return res.json({ products });
   } catch (err) {
     return res.status(500).json({ error: err.message || "Failed to load products" });
+  }
+});
+
+router.post("/api/reply", async (req, res) => {
+  const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
+  const body = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+
+  if (!to || !body) {
+    return res.status(400).json({ error: "Both 'to' (phone) and 'text' are required." });
+  }
+
+  try {
+    await sendWhatsAppText(to, body);
+    recordWebhookEvent({
+      source: "admin-reply",
+      outgoingTo: to,
+      reply: body,
+    });
+    return res.status(200).json({ status: "sent" });
+  } catch (err) {
+    console.error("Failed to send WhatsApp reply", err);
+    return res.status(500).json({ error: err.message || "Send failed" });
   }
 });
 

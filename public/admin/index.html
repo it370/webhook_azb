@@ -176,6 +176,8 @@
           <button class="nav-btn" data-target="test-card" type="button">Quick test</button>
           <button class="nav-btn" data-target="orders-card" type="button">Orders</button>
           <button class="nav-btn" data-target="products-card" type="button">Products</button>
+          <button class="nav-btn" data-target="inbox-card" type="button">Inbox</button>
+          <button class="nav-btn" data-target="reply-card" type="button">Reply</button>
           <button class="nav-btn" data-target="events-card" type="button">Webhook events</button>
         </div>
       </aside>
@@ -213,6 +215,25 @@
           </div>
         </div>
 
+        <div class="section-row">
+          <div class="card" id="inbox-card">
+            <h2>Inbox (WhatsApp)</h2>
+            <div class="muted" style="margin-bottom:0.5rem;">Recent inbound messages (from webhook events).</div>
+            <div id="inbox-body" class="muted">Loading...</div>
+          </div>
+
+          <div class="card" id="reply-card">
+            <h2>Send Reply (24h window)</h2>
+            <form id="reply-form">
+              <label for="reply-to">Recipient phone (E.164, e.g., 91xxxxxxxxxx)</label>
+              <input id="reply-to" type="text" placeholder="+91..." />
+              <label for="reply-text">Message</label>
+              <textarea id="reply-text" rows="3" placeholder="Type a non-template message"></textarea>
+              <button id="reply-button" type="submit">Send</button>
+            </form>
+          </div>
+        </div>
+
         <div class="card" id="events-card">
           <div class="row" style="justify-content: space-between;">
             <h2 style="margin: 0;">Recent Webhook Events</h2>
@@ -238,6 +259,11 @@
       const refreshOrdersBtn = document.getElementById("refresh-orders");
       const loadProductsBtn = document.getElementById("load-products");
       const productsBody = document.getElementById("products-body");
+      const inboxBody = document.getElementById("inbox-body");
+      const replyForm = document.getElementById("reply-form");
+      const replyToInput = document.getElementById("reply-to");
+      const replyTextInput = document.getElementById("reply-text");
+      const replyButton = document.getElementById("reply-button");
       const navButtons = Array.from(document.querySelectorAll(".nav-btn"));
 
       async function runTest(e) {
@@ -313,6 +339,69 @@
         `;
       }
 
+      function renderInbox(events = []) {
+        const inbound = events.filter((e) => e.incomingText && e.from);
+        if (!inbound.length) {
+          inboxBody.textContent = "No inbound messages yet.";
+          return;
+        }
+        const rows = inbound
+          .map(
+            (e) => `
+              <tr>
+                <td>${escapeHtml(e.createdAt || "")}</td>
+                <td>${escapeHtml(e.from || "")}</td>
+                <td><code>${escapeHtml(e.incomingText || "")}</code></td>
+                <td>
+                  <button type="button" class="pill" onclick="prefillReply('${escapeHtml(
+                    e.from || ""
+                  )}', '${escapeHtml(e.incomingText || "").replace(/'/g, "\\'")}')">Reply</button>
+                </td>
+              </tr>
+            `
+          )
+          .join("");
+        inboxBody.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>From</th>
+                <th>Message</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
+      async function sendReply(e) {
+        e.preventDefault();
+        const to = replyToInput.value.trim();
+        const text = replyTextInput.value.trim();
+        if (!to || !text) {
+          alert("Both recipient and message are required.");
+          return;
+        }
+        setLoading(replyButton, true, "Sending...");
+        try {
+          const res = await fetch("/admin/api/reply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to, text }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Failed to send.");
+          replyTextInput.value = "";
+          await loadEvents();
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          setLoading(replyButton, false);
+        }
+      }
+
       function renderOrders(orders = []) {
         if (!orders.length) {
           ordersBody.textContent = "No pending orders logged.";
@@ -340,6 +429,7 @@
           const res = await fetch("/admin/api/events");
           const data = await res.json();
           renderEvents(data.events || []);
+          renderInbox(data.events || []);
         } catch (err) {
           eventsTable.textContent = "Failed to load events.";
         }
@@ -435,6 +525,12 @@
         if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
+      window.prefillReply = (to, message) => {
+        replyToInput.value = to;
+        replyTextInput.value = `Re: ${message}`;
+        scrollToSection("reply-card");
+      };
+
       navButtons.forEach((btn) => {
         btn.addEventListener("click", () => {
           const target = btn.dataset.target;
@@ -446,6 +542,7 @@
       refreshEventsBtn.addEventListener("click", loadEvents);
       refreshOrdersBtn.addEventListener("click", loadOrders);
       loadProductsBtn.addEventListener("click", loadProducts);
+      replyForm.addEventListener("submit", sendReply);
 
       loadEvents();
       loadOrders();

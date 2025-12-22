@@ -54,8 +54,8 @@ from products p
 left join vendors v on v.id = p.vendor_id
 where p.name ilike '%${cleaned}%' or p.description ilike '%${cleaned}%'
 limit ${limit};`;
-  console.log("[text-search] query:", cleaned, "limit:", limit);
-  console.log("[text-search] sql:", sqlPreview);
+  // console.log("[text-search] query:", cleaned, "limit:", limit);
+  // console.log("[text-search] sql:", sqlPreview);
 
   const { data, error } = await supabase
     .from("products")
