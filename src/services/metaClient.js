@@ -1,5 +1,6 @@
 const phoneNumberId = process.env.META_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_NUMBER_ID;
 const accessToken = process.env.META_SYSTEM_USER_ACCESS_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN;
+const { buildTextMessage } = require("./messageFactory");
 
 if (!phoneNumberId) {
   console.warn("META_PHONE_NUMBER_ID is not set; outbound WhatsApp replies will fail.");
@@ -9,18 +10,15 @@ if (!accessToken) {
 }
 
 async function sendWhatsAppText(to, body) {
+  const payload = buildTextMessage(to, body);
+  return sendWhatsAppMessage(payload);
+}
+
+async function sendWhatsAppMessage(payload) {
   if (!phoneNumberId || !accessToken) {
     throw new Error("Meta credentials missing");
   }
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
-  const payload = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to,
-    type: "text",
-    text: { body },
-  };
-
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -36,5 +34,5 @@ async function sendWhatsAppText(to, body) {
   }
 }
 
-module.exports = { sendWhatsAppText };
+module.exports = { sendWhatsAppText, sendWhatsAppMessage };
 
