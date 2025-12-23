@@ -179,6 +179,7 @@
           <button class="nav-btn" data-target="inbox-card" type="button">Inbox</button>
           <button class="nav-btn" data-target="reply-card" type="button">Reply</button>
           <button class="nav-btn" data-target="events-card" type="button">Webhook events</button>
+          <button class="nav-btn" data-target="usage-card" type="button">Gemini usage</button>
         </div>
       </aside>
       <main class="main">
@@ -213,6 +214,30 @@
             </div>
             <div id="products-body" class="muted">Not loaded.</div>
           </div>
+
+          <div class="card" id="classify-card">
+            <h2>Classifier Agent Test</h2>
+            <form id="classify-form">
+              <label for="classify-text">Message</label>
+              <textarea id="classify-text" rows="3" placeholder="e.g., I want honey or I'm just browsing"></textarea>
+              <label for="classify-language">Language (optional)</label>
+              <input id="classify-language" type="text" placeholder="e.g., Mizo with English mix" />
+              <button id="classify-button" type="submit">Classify</button>
+            </form>
+            <div id="classify-result" class="muted" style="margin-top:0.75rem;">Not tested.</div>
+          </div>
+
+          <div class="card" id="translate-card">
+            <h2>HF Translate (local model)</h2>
+            <form id="translate-form">
+              <label for="translate-text">Text to translate</label>
+              <textarea id="translate-text" rows="3" placeholder="Enter text to translate"></textarea>
+              <label for="translate-maxnew">Max new tokens (default 64)</label>
+              <input id="translate-maxnew" type="number" min="1" max="512" value="64" />
+              <button id="translate-button" type="submit">Translate</button>
+            </form>
+            <div id="translate-result" class="muted" style="margin-top:0.75rem;">Not tested.</div>
+          </div>
         </div>
 
         <div class="section-row">
@@ -245,6 +270,22 @@
             Loading...
           </div>
         </div>
+
+        <div class="card" id="usage-card">
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <div>
+              <h2 style="margin: 0;">Gemini Token Usage</h2>
+              <div class="muted">Pulled from Supabase table gemini_usage_logs.</div>
+            </div>
+            <div class="row">
+              <label for="usage-days" style="margin:0;font-weight:600;">Days</label>
+              <input id="usage-days" type="number" min="1" max="365" value="30" style="width:80px;" />
+              <button id="refresh-usage" type="button">Refresh</button>
+            </div>
+          </div>
+          <div id="usage-summary" class="muted" style="margin-top:0.5rem;">Loading...</div>
+          <div id="usage-table" class="muted" style="margin-top:0.5rem;">Loading...</div>
+        </div>
       </main>
     </div>
 
@@ -265,6 +306,20 @@
       const replyTextInput = document.getElementById("reply-text");
       const replyButton = document.getElementById("reply-button");
       const navButtons = Array.from(document.querySelectorAll(".nav-btn"));
+      const classifyForm = document.getElementById("classify-form");
+      const classifyText = document.getElementById("classify-text");
+      const classifyLanguage = document.getElementById("classify-language");
+      const classifyButton = document.getElementById("classify-button");
+      const classifyResult = document.getElementById("classify-result");
+      const translateForm = document.getElementById("translate-form");
+      const translateText = document.getElementById("translate-text");
+      const translateMaxNew = document.getElementById("translate-maxnew");
+      const translateButton = document.getElementById("translate-button");
+      const translateResult = document.getElementById("translate-result");
+      const usageDays = document.getElementById("usage-days");
+      const refreshUsageBtn = document.getElementById("refresh-usage");
+      const usageSummary = document.getElementById("usage-summary");
+      const usageTable = document.getElementById("usage-table");
 
       async function runTest(e) {
         e.preventDefault();
@@ -402,6 +457,34 @@
         }
       }
 
+      async function runTranslate(e) {
+        e.preventDefault();
+        const text = translateText.value.trim();
+        const maxNewTokens = Number.parseInt(translateMaxNew.value, 10) || 64;
+        if (!text) {
+          translateResult.textContent = "Enter text to translate.";
+          return;
+        }
+        setLoading(translateButton, true, "Translating...");
+        translateResult.textContent = "Running...";
+        try {
+          const res = await fetch("/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, maxNewTokens }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Translation failed");
+          translateResult.innerHTML = `
+            <div><span class="pill">Translated</span> ${escapeHtml(data.translated || "")}</div>
+          `;
+        } catch (err) {
+          translateResult.textContent = err.message;
+        } finally {
+          setLoading(translateButton, false);
+        }
+      }
+
       function renderOrders(orders = []) {
         if (!orders.length) {
           ordersBody.textContent = "No pending orders logged.";
@@ -421,6 +504,85 @@
           )
           .join("");
         ordersBody.innerHTML = rows;
+      }
+
+      function renderUsageSummary(totals = {}, count = 0) {
+        const prompt = Number(totals.promptTokens || 0);
+        const completion = Number(totals.completionTokens || 0);
+        const total = Number(
+          totals.totalTokens || prompt + completion
+        );
+        usageSummary.innerHTML = `
+          <div class="row">
+            <span class="pill">Prompt</span> ${prompt.toLocaleString()} tokens
+            <span class="pill">Completion</span> ${completion.toLocaleString()} tokens
+            <span class="pill">Total</span> ${total.toLocaleString()} tokens
+            <span class="pill">Calls</span> ${count}
+          </div>
+        `;
+      }
+
+      function renderUsageRows(rows = []) {
+        if (!rows.length) {
+          usageTable.textContent = "No usage rows found for this window.";
+          return;
+        }
+        const tableRows = rows
+          .map((r) => {
+            const created = r.created_at
+              ? new Date(r.created_at).toLocaleString()
+              : "";
+            return `
+              <tr>
+                <td>${escapeHtml(created)}</td>
+                <td>${escapeHtml(r.model || "")}</td>
+                <td>${escapeHtml((r.prompt_tokens ?? 0).toLocaleString())}</td>
+                <td>${escapeHtml((r.completion_tokens ?? 0).toLocaleString())}</td>
+                <td>${escapeHtml((r.total_tokens ?? 0).toLocaleString())}</td>
+                <td>${escapeHtml(r.origin || "")}</td>
+                <td><code>${escapeHtml(r.response_id || "")}</code></td>
+              </tr>
+            `;
+          })
+          .join("");
+        usageTable.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Model</th>
+                <th>Prompt</th>
+                <th>Completion</th>
+                <th>Total</th>
+                <th>Origin</th>
+                <th>Response ID</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        `;
+      }
+
+      async function loadUsage() {
+        usageSummary.textContent = "Loading...";
+        usageTable.textContent = "Loading...";
+        setLoading(refreshUsageBtn, true, "Loading...");
+        try {
+          const days = Number.parseInt(usageDays.value, 10) || 30;
+          const res = await fetch(
+            `/admin/api/usage/gemini?days=${days}&limit=100`
+          );
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Failed to load usage.");
+          const rows = data.rows || [];
+          renderUsageSummary(data.totals || {}, rows.length);
+          renderUsageRows(rows);
+        } catch (err) {
+          usageSummary.textContent = err.message;
+          usageTable.textContent = "";
+        } finally {
+          setLoading(refreshUsageBtn, false, "Refresh");
+        }
       }
 
       async function loadEvents() {
@@ -458,6 +620,37 @@
           productsBody.textContent = err.message;
         } finally {
           setLoading(loadProductsBtn, false);
+        }
+      }
+
+      async function runClassify(e) {
+        e.preventDefault();
+        const text = classifyText.value.trim();
+        const language = classifyLanguage.value.trim();
+        if (!text) {
+          classifyResult.textContent = "Enter a message first.";
+          return;
+        }
+        setLoading(classifyButton, true, "Classifying...");
+        classifyResult.textContent = "Running...";
+        try {
+          const res = await fetch("/agent/classify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, language: language || undefined }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Classify failed");
+          classifyResult.innerHTML = `
+            <div><span class="pill">Intent</span> ${escapeHtml(data.intent || "")}</div>
+            <div class="muted">Query: ${escapeHtml(data.query || "")}</div>
+            ${data.reply ? `<div class="muted" style="margin-top:0.4rem;">Reply: ${escapeHtml(data.reply)}</div>` : ""}
+            ${data.language ? `<div class="muted">Language: ${escapeHtml(data.language)}</div>` : ""}
+          `;
+        } catch (err) {
+          classifyResult.textContent = err.message;
+        } finally {
+          setLoading(classifyButton, false);
         }
       }
 
@@ -543,9 +736,13 @@
       refreshOrdersBtn.addEventListener("click", loadOrders);
       loadProductsBtn.addEventListener("click", loadProducts);
       replyForm.addEventListener("submit", sendReply);
+      classifyForm.addEventListener("submit", runClassify);
+      translateForm.addEventListener("submit", runTranslate);
+      refreshUsageBtn.addEventListener("click", loadUsage);
 
       loadEvents();
       loadOrders();
+      loadUsage();
     </script>
   </body>
 </html>

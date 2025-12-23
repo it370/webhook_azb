@@ -5,11 +5,26 @@ const { getWebhookEvents, recordWebhookEvent } = require("../services/adminStore
 const { pendingOrders } = require("../services/orderService");
 const { listProducts } = require("../services/productService");
 const { sendWhatsAppText } = require("../services/metaClient");
+const { getGeminiUsageSummary } = require("../services/usageService");
 
 const router = express.Router();
 
 router.get("/api/events", (_req, res) => {
   res.json({ events: getWebhookEvents() });
+});
+
+router.get("/api/usage/gemini", async (req, res) => {
+  try {
+    const days = Number.parseInt(req.query.days, 10) || 30;
+    const limit = Number.parseInt(req.query.limit, 10) || 100;
+    const { rows, totals, error } = await getGeminiUsageSummary({ days, limit });
+    if (error) {
+      return res.status(500).json({ error });
+    }
+    return res.json({ rows, totals });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "Failed to load usage" });
+  }
 });
 
 router.get("/api/orders", (_req, res) => {
@@ -23,7 +38,10 @@ router.post("/api/test", async (req, res) => {
   }
 
   try {
-    const result = await handleIncomingText(text);
+    const result = await handleIncomingText(text, {
+      userId: "admin-test",
+      sessionLanguage: process.env.DEFAULT_SESSION_LANGUAGE || "Mizo with English mix",
+    });
     recordWebhookEvent({
       source: "admin-test",
       incomingText: text,

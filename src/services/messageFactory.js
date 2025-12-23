@@ -103,6 +103,57 @@ function buildInteractiveListMessage(to, bodyText, sections = [], headerText = "
   };
 }
 
+function buildInteractiveCarouselMessage(
+  to,
+  cards = [],
+  bodyText = "Check out our latest offers!"
+) {
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "interactive",
+    interactive: {
+      type: "carousel",
+      body: { text: bodyText },
+      action: { cards },
+    },
+  };
+}
+
+function buildContextualTextMessage(to, body, replyToMessageId) {
+  const context = replyToMessageId ? { message_id: replyToMessageId } : undefined;
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    context,
+    type: "text",
+    text: { body },
+  };
+}
+
+function buildLocationRequestMessage(
+  to,
+  bodyText="I Address map ah hian min lo share sak thei em khawngaihin?"
+) {
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    type: "interactive",
+    to,
+    interactive: {
+      type: "location_request_message",
+      body: {
+        text: bodyText,
+      },
+      action: {
+        name: "send_location",
+      },
+    },
+  };
+}
+
 module.exports = {
   buildTextMessage,
   buildTemplateMessage,
@@ -113,5 +164,8 @@ module.exports = {
   buildLocationMessage,
   buildInteractiveButtonsMessage,
   buildInteractiveListMessage,
+  buildInteractiveCarouselMessage,
+  buildContextualTextMessage,
+  buildLocationRequestMessage,
 };
 

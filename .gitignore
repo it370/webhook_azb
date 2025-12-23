@@ -3,6 +3,10 @@ node_modules/
 .pnp*
 .npm/
 
+# ignore hf models
+hfmodel/
+_pycache_
+
 # Logs and debugging
 npm-debug.log*
 yarn-debug.log*

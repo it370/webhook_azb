@@ -54,7 +54,7 @@ describe("POST /webhook", () => {
       expect.objectContaining({ matchCount: 5, similarityThreshold: 0.5 })
     );
     expect(res.body.products).toHaveLength(1);
-    expect(res.body.reply).toContain("cakes");
+    expect(res.body.reply).toContain("Here are some options");
   });
 
   test("handles order intent without calling product search", async () => {

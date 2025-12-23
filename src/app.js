@@ -2,6 +2,8 @@ const path = require("path");
 const express = require("express");
 const webhookRouter = require("./routes/webhook");
 const adminRouter = require("./routes/admin");
+const agentRouter = require("./routes/agent");
+const translateRouter = require("./routes/translate");
 
 function createApp() {
   const app = express();
@@ -9,6 +11,8 @@ function createApp() {
 
   app.use(webhookRouter);
   app.use("/admin", adminRouter);
+  app.use(agentRouter);
+  app.use(translateRouter);
   app.use(
     "/admin",
     express.static(path.join(__dirname, "../public/admin"), {

@@ -27,7 +27,7 @@ async function main() {
   while (true) {
     const { data: rows, error } = await supabase
       .from("products")
-      .select("id, name, description")
+      .select("id, name, description, search_description, search_keywords")
       .is("embedding", null)
       .limit(BATCH_SIZE);
 
@@ -44,7 +44,7 @@ async function main() {
     console.log(`Embedding batch of ${rows.length}...`);
 
     for (const row of rows) {
-      const text = `${row.name || ""}. ${row.description || ""}`.trim().slice(0, 2000);
+      const text = buildEmbeddingText(row).slice(0, 2000);
       if (!text) continue;
 
       try {
@@ -58,13 +58,35 @@ async function main() {
           continue;
         }
 
+        // Persist embedding both in the dedicated embeddings table and on products for compatibility.
+        const { error: upsertError } = await supabase
+          .from("product_embeddings")
+          .upsert(
+            {
+              product_id: row.id,
+              model: MODEL,
+              source_text: text,
+              embedding,
+            },
+            { onConflict: "product_id" }
+          );
+
+        if (upsertError) {
+          console.error("Failed to upsert product_embeddings for", row.id, upsertError);
+          continue;
+        }
+
         const { error: updateError } = await supabase
           .from("products")
-          .update({ embedding })
+          .update({
+            embedding,
+            embedding_model: MODEL,
+            embedding_updated_at: new Date().toISOString(),
+          })
           .eq("id", row.id);
 
         if (updateError) {
-          console.error("Failed to update embedding for", row.id, updateError);
+          console.error("Failed to update embedding columns for", row.id, updateError);
           continue;
         }
 
@@ -74,6 +96,19 @@ async function main() {
       }
     }
   }
+}
+
+function buildEmbeddingText(row) {
+  const parts = [
+    row.name || "",
+    row.search_description || "",
+    row.description || "",
+    row.search_keywords || "",
+  ];
+  return parts
+    .map((p) => String(p).trim())
+    .filter(Boolean)
+    .join(". ");
 }
 
 main();

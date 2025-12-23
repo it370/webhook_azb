@@ -27,62 +27,12 @@ See `.env.example` for a template.
 - `POST /webhook`: Accepts WhatsApp inbound payload (or `{ "text": "..." }` for local testing). Detects order intent, otherwise runs product search + RAG response. Returns `{ reply, products }`.
 
 ### Supabase schema
-Run in SQL editor:
-```sql
-create extension if not exists vector;
-
-create table vendors (
-  id uuid primary key default uuid_generate_v4(),
-  name text not null,
-  veng_location text not null,
-  phone_number text
-);
-
-create table products (
-  id uuid primary key default uuid_generate_v4(),
-  vendor_id uuid references vendors(id),
-  name text not null,
-  price numeric not null,
-  description text,
-  stock_status boolean default true,
-  embedding vector(1536)
-);
+Run the production-ready catalog script in SQL editor (or `psql`):
+```
+scripts/sql/001_product_catalog.sql
 ```
 
-Add an RPC for similarity search (adjust table/column names if needed):
-```sql
-create or replace function match_products (
-  query_embedding vector(1536),
-  match_threshold float,
-  match_count int
-) returns table (
-  id uuid,
-  name text,
-  price numeric,
-  description text,
-  stock_status boolean,
-  vendor_id uuid,
-  vendor_name text,
-  veng_location text,
-  similarity float
-) language sql stable as $$
-  select
-    p.id,
-    p.name,
-    p.price,
-    p.description,
-    p.stock_status,
-    p.vendor_id,
-    v.name as vendor_name,
-    v.veng_location,
-    1 - (p.embedding <=> query_embedding) as similarity
-  from products p
-  join vendors v on v.id = p.vendor_id
-  where 1 - (p.embedding <=> query_embedding) > match_threshold
-  order by p.embedding <=> query_embedding
-  limit match_count;
-$$;
-```
+It provisions categories, subcategories, tags, richer product metadata (display vs. internal descriptions, search keywords), image variants, commissions, a dedicated `product_embeddings` table, a `product_catalog_view` for admin/API reads, and an updated `match_products` RPC that joins vendor + taxonomy info.
 
 ### How it works
 - Message parsing: LLM classifies intent (`search` vs `order`) and extracts query text (supports Mizo + English mix).

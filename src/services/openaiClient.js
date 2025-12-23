@@ -20,10 +20,15 @@ async function embedText(text) {
 
 async function runChatCompletion(messages) {
   if (!client) throw new Error("OpenAI client not configured");
+  const tempEnv = process.env.OPENAI_TEMPERATURE;
+  const temperature =
+    tempEnv !== undefined && tempEnv !== ""
+      ? Number.parseFloat(tempEnv)
+      : 1;
   const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-4o",
     messages,
-    temperature: 0.3,
+    temperature,
   });
   return completion.choices[0]?.message?.content?.trim();
 }

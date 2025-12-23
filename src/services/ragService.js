@@ -42,35 +42,59 @@ async function searchByText(supabase, queryText, limit = 5) {
 
   // Log the search query for debugging against Supabase.
   const sqlPreview = `select
-  p.id,
-  p.name,
-  p.price,
-  p.description,
-  p.stock_status,
-  p.vendor_id,
+  pcv.id,
+  pcv.name,
+  pcv.price,
+  pcv.description,
+  pcv.search_description,
+  pcv.stock_status,
+  pcv.vendor_id,
   v.name as vendor_name,
   v.veng_location
-from products p
-left join vendors v on v.id = p.vendor_id
-where p.name ilike '%${cleaned}%' or p.description ilike '%${cleaned}%'
+from product_catalog_view pcv
+left join vendors v on v.id = pcv.vendor_id
+where pcv.status = 'published' and (
+  pcv.name ilike '%${cleaned}%'
+  or pcv.description ilike '%${cleaned}%'
+  or pcv.search_description ilike '%${cleaned}%'
+  or pcv.search_keywords ilike '%${cleaned}%'
+)
 limit ${limit};`;
   // console.log("[text-search] query:", cleaned, "limit:", limit);
   // console.log("[text-search] sql:", sqlPreview);
 
   const { data, error } = await supabase
-    .from("products")
+    .from("product_catalog_view")
     .select(
       `
         id,
         name,
         price,
         description,
+        search_description,
         stock_status,
+        stock_quantity,
         vendor_id,
-        vendor:vendors(name, veng_location)
+        vendor:vendors(name, veng_location),
+        category_name,
+        subcategory_name,
+        tag_names,
+        cover_image_url,
+        thumbnail_url,
+        minified_image_url,
+        commission_percent,
+        commission_fixed_amount
       `
     )
-    .or(`name.ilike.%${cleaned}%,description.ilike.%${cleaned}%`)
+    .eq("status", "published")
+    .or(
+      [
+        `name.ilike.%${cleaned}%`,
+        `description.ilike.%${cleaned}%`,
+        `search_description.ilike.%${cleaned}%`,
+        `search_keywords.ilike.%${cleaned}%`,
+      ].join(",")
+    )
     .limit(limit);
 
   if (error) {
@@ -81,5 +105,43 @@ limit ${limit};`;
   return data || [];
 }
 
-module.exports = { findProductsBySimilarity };
+async function fetchPopularProducts(limit = 5) {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("product_catalog_view")
+    .select(
+      `
+        id,
+        name,
+        price,
+        description,
+        search_description,
+        stock_status,
+        stock_quantity,
+        vendor_id,
+        vendor:vendors(name, veng_location),
+        category_name,
+        subcategory_name,
+        tag_names,
+        cover_image_url,
+        thumbnail_url,
+        minified_image_url,
+        commission_percent,
+        commission_fixed_amount
+      `
+    )
+    .eq("status", "published")
+    .limit(limit);
+
+  if (error) {
+    console.error("Supabase popular products failed", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+module.exports = { findProductsBySimilarity, fetchPopularProducts };
 
