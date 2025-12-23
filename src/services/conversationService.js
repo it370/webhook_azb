@@ -21,6 +21,19 @@ async function handleConversation(
 
   const parsed = await parseUserMessage(userText);
 
+  // Availability: answer based on actual catalog lookup, no generic fallback.
+  if (parsed.intent === "availability") {
+    const availabilityResult = await handleAvailabilityIntent(
+      userText,
+      parsed,
+      policy,
+      conversationId,
+      history,
+      languagePref
+    );
+    return availabilityResult;
+  }
+
   if (parsed.intent === "order") {
     const order = await logPendingOrder({
       rawText: userText,
@@ -69,8 +82,13 @@ async function handleConversation(
     }
   }
 
+  let usedAlternatives = false;
   if (!products.length) {
-    products = await fetchPopularProducts(5);
+    const alt = await findClosestAlternatives(query, expansion, parsed);
+    if (alt.length) {
+      products = alt;
+      usedAlternatives = true;
+    }
   }
 
   const relevantProducts = filterProducts(products, parsed);
@@ -82,7 +100,8 @@ async function handleConversation(
     expansion,
     history,
     languagePref,
-    parsed
+    parsed,
+    usedAlternatives
   );
 
   await persist(conversationId, userText, reply);
@@ -156,6 +175,34 @@ function buildFallbackSearches(query, expansion = {}, parsed = {}) {
   return Array.from(new Set(searches)).filter(Boolean);
 }
 
+async function findClosestAlternatives(query, expansion = {}, parsed = {}) {
+  const altQueries = [];
+  const kws = (expansion.keywords || []).concat(parsed.keywords || []).filter(Boolean);
+  const cats = (expansion.categories || []).filter(Boolean);
+
+  if (kws.length) altQueries.push(kws.slice(0, 8).join(" "));
+  if (cats.length) altQueries.push(cats.slice(0, 5).join(" "));
+  if (parsed.category) altQueries.push(parsed.category);
+  if (parsed.product) altQueries.push(parsed.product);
+
+  const unique = Array.from(new Set(altQueries.filter(Boolean)));
+  const results = [];
+
+  for (const q of unique) {
+    const hits = await findProductsBySimilarity(null, {
+      matchCount: 5,
+      similarityThreshold: 0.35,
+      queryText: q,
+    });
+    if (hits?.length) {
+      results.push(...hits);
+      break;
+    }
+  }
+
+  return results.slice(0, 5);
+}
+
 async function craftResponse(
   userText,
   formattedList,
@@ -163,20 +210,20 @@ async function craftResponse(
   expansion = {},
   history = [],
   languagePref = "Mizo with English mix",
-  parsed = {}
+  parsed = {},
+  usedAlternatives = false
 ) {
   if (!products.length) {
     const suggestionLine = buildSuggestionLine(userText, expansion, parsed);
     if (suggestionLine) {
       return suggestionLine;
     }
-    return "Showing top picks available now.";
+    return "I couldn’t find that item right now. Want me to try close alternatives?";
   }
 
-  // Deterministic response to avoid hallucinations; prepend LLM short response when provided.
-  // const llmLine = "Here are some options:";
-  const mizoLine = parsed.mizo_response ? `\n${parsed.mizo_response.trim()}` : "";
-  return `${mizoLine}\n${formattedList}`;
+  const prefix = usedAlternatives ? "Closest alternatives we have:\n" : "";
+  const mizoLine = parsed.mizo_response ? `${parsed.mizo_response.trim()}\n` : "";
+  return `${prefix}${mizoLine}${formattedList}`;
 }
 
 function buildSuggestionLine(userText, expansion = {}, parsed = {}) {
@@ -245,6 +292,120 @@ function historyToChat(history = []) {
       content: m.text,
     }))
     .filter((m) => m.content);
+}
+
+async function handleAvailabilityIntent(
+  userText,
+  parsed,
+  policy,
+  conversationId,
+  history,
+  languagePref
+) {
+  const query = parsed.query || parsed.product || userText;
+  const expansion = await expandQueryToCategories(query);
+  const searchText = buildSearchText(query, expansion, parsed);
+
+  let embedding = null;
+  try {
+    embedding = await embedText(searchText);
+  } catch (err) {
+    console.warn("Embedding unavailable for availability, using text search", err.message);
+  }
+
+  let products = await findProductsBySimilarity(embedding, {
+    matchCount: 5,
+    similarityThreshold: 0.4,
+    queryText: searchText,
+  });
+
+  products = enforceRelevance(products, parsed, userText);
+
+  if (!products.length) {
+    const fallbackSearches = buildFallbackSearches(query, expansion, parsed);
+    for (const fb of fallbackSearches) {
+      products = await findProductsBySimilarity(null, {
+        matchCount: 5,
+        similarityThreshold: 0.5,
+        queryText: fb,
+      });
+      products = enforceRelevance(products, parsed, userText);
+      if (products.length) break;
+    }
+  }
+
+  if (!products.length) {
+    const reply = "I couldn’t find that item available right now. Want me to show close alternatives?";
+    await persist(conversationId, userText, reply);
+    return {
+      reply,
+      products: [],
+      parsed,
+      expansion,
+      conversationId,
+      history,
+      policy,
+      language: languagePref,
+    };
+  }
+
+  const relevantProducts = products;
+  const formattedList = formatProductList(relevantProducts);
+  const availabilityLine =
+    parsed.mizo_response ||
+    parsed.english_response ||
+    "Yes, available right now. Here are options:";
+  const reply = `${availabilityLine}\n${formattedList}`;
+
+  await persist(conversationId, userText, reply);
+
+  return {
+    reply,
+    products: relevantProducts,
+    parsed,
+    expansion,
+    conversationId,
+    history,
+    policy,
+    language: languagePref,
+    mizo_response: parsed.mizo_response || "",
+  };
+}
+
+function enforceRelevance(products = [], parsed = {}, userText = "") {
+  const haystackFields = (p) =>
+    [
+      p.name,
+      p.description,
+      p.search_description,
+      p.category_name,
+      p.subcategory_name,
+      Array.isArray(p.tag_names) ? p.tag_names.join(" ") : p.tag_names,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+  const needleText = [
+    parsed.query,
+    parsed.product,
+    parsed.category,
+    ...(parsed.keywords || []),
+    userText,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const needles = Array.from(new Set(needleText.split(/[^a-z0-9]+/).filter((t) => t.length > 2)));
+  if (!needles.length) return products;
+
+  const filtered = products.filter((p) => {
+    const hay = haystackFields(p);
+    return needles.some((n) => hay.includes(n));
+  });
+
+  return filtered.length ? filtered : [];
 }
 
 async function persist(conversationId, userText, reply) {
